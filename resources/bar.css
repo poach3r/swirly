@@ -63,7 +63,8 @@ window {
 }
 
 .toggle_button:active,
-.info_button:active {
+.info_button:active,
+.app:active {
     transform: translate3d(0px, 2px, 2px);
 }
 
