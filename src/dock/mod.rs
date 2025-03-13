@@ -1,0 +1,220 @@
+mod app;
+mod indicator;
+
+use gtk::prelude::*;
+use gtk4_layer_shell::{Edge, Layer, LayerShell};
+use relm4::prelude::*;
+use swayipc::{Connection, Node, WindowChange, WindowEvent};
+
+const NAME_OVERRIDES: &[&[&str]] = &[&["dev.zed.Zed", "zen"], &["lite", "browser"]];
+
+#[tracker::track]
+pub struct DockModel {
+    enabled: bool,
+    visible: bool,
+    #[tracker::do_not_track]
+    apps: AsyncFactoryVecDeque<app::AppModel>,
+    #[tracker::do_not_track]
+    indicator: Controller<indicator::IndicatorModel>,
+    #[tracker::do_not_track]
+    theme: gtk::IconTheme,
+}
+
+#[derive(Debug)]
+pub enum Input {
+    Init,
+    Enter,
+    Leave,
+    Toggle,
+    Update(Box<WindowEvent>),
+    Focus(i64),
+}
+
+#[derive(Debug)]
+pub enum Output {
+    Focus(i64),
+}
+
+#[relm4::component(pub)]
+impl SimpleComponent for DockModel {
+    type Init = ();
+    type Input = Input;
+    type Output = Output;
+
+    view! {
+        #[name = "window"]
+        gtk::Window {
+            #[track = "model.changed_visible() || model.changed_enabled()"]
+            set_visible: model.visible && model.enabled,
+
+            #[local_ref]
+            apps_box -> gtk::Box {
+                add_css_class: "dock",
+                set_spacing: 8,
+                set_margin_all: 8,
+                add_controller = gtk::EventControllerMotion {
+                    connect_leave => Input::Leave,
+                }
+            },
+        }
+    }
+
+    fn init(
+        _init: Self::Init,
+        root: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let apps = AsyncFactoryVecDeque::builder()
+            .launch(gtk::Box::default())
+            .forward(sender.input_sender(), |msg| match msg {
+                app::Output::Focus(x) => Input::Focus(x),
+            });
+        let indicator_builder = indicator::IndicatorModel::builder();
+        relm4::main_application().add_window(&indicator_builder.root);
+        let indicator =
+            indicator_builder
+                .launch(())
+                .forward(sender.input_sender(), |msg| match msg {
+                    indicator::Output::Enter => Input::Enter,
+                });
+        let model = DockModel {
+            enabled: true,
+            visible: false,
+            apps,
+            indicator,
+            theme: gtk::IconTheme::for_display(&gtk::gdk::Display::default().unwrap()),
+            tracker: 0,
+        };
+        let apps_box = model.apps.widget();
+        let widgets = view_output!();
+
+        widgets.window.init_layer_shell();
+        widgets.window.set_layer(Layer::Top);
+        for (anchor, state) in [
+            (Edge::Left, false),
+            (Edge::Right, false),
+            (Edge::Top, false),
+            (Edge::Bottom, true),
+        ] {
+            widgets.window.set_anchor(anchor, state);
+        }
+
+        sender.input(Input::Init);
+
+        ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+        self.reset();
+
+        match msg {
+            Input::Focus(x) => {
+                sender.output(Output::Focus(x)).unwrap();
+            }
+            Input::Enter => {
+                self.set_visible(true);
+            }
+            Input::Leave => {
+                self.set_visible(false);
+                self.indicator.emit(indicator::Input::Leave);
+            }
+            Input::Toggle => {
+                self.set_enabled(!self.enabled);
+                self.indicator.emit(indicator::Input::Toggle);
+            }
+            Input::Update(x) => match x.change {
+                WindowChange::Close => {
+                    let mut index: usize = 999;
+                    for (i, app) in self.apps.guard().iter().enumerate() {
+                        if let None = app {
+                            continue;
+                        }
+
+                        if app.unwrap().id == x.container.id {
+                            index = i;
+                        }
+                    }
+                    if index == 999 {
+                        return;
+                    }
+
+                    self.apps.guard().remove(index);
+                }
+                WindowChange::New => {
+                    self.apps.guard().push_back((
+                        x.container.id,
+                        get_name(&x.container),
+                        x.container.focused,
+                    ));
+                }
+                WindowChange::Focus => {
+                    let mut index: usize = 999;
+                    for (i, app) in self.apps.guard().iter().enumerate() {
+                        if let None = app {
+                            continue;
+                        }
+
+                        if app.unwrap().id == x.container.id {
+                            index = i;
+                        }
+                    }
+                    if index == 999 {
+                        return;
+                    }
+
+                    self.apps.guard().remove(index);
+                    self.apps.guard().broadcast(app::Input::Unfocus);
+                    self.apps.guard().insert(
+                        index,
+                        (x.container.id, get_name(&x.container), x.container.focused),
+                    );
+                }
+                _ => (),
+            },
+            Input::Init => {
+                self.apps.guard().clear();
+                let mut connection = Connection::new().unwrap();
+                for output in connection.get_tree().unwrap().nodes.iter() {
+                    if let Some(name) = &output.name {
+                        if name == "__i3" {
+                            continue;
+                        }
+                    }
+
+                    for workspace in output.nodes.iter() {
+                        for app in workspace.nodes.iter() {
+                            self.apps
+                                .guard()
+                                .push_back((app.id, get_name(app), app.focused));
+                        }
+                        for app in workspace.floating_nodes.iter() {
+                            self.apps
+                                .guard()
+                                .push_back((app.id, get_name(app), app.focused));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn get_name(app: &Node) -> String {
+    let name = if let Some(id) = &app.app_id {
+        id.to_string()
+    } else if let Some(props) = &app.window_properties {
+        props.class.clone().unwrap()
+    } else if let Some(name) = &app.name {
+        name.to_owned()
+    } else {
+        String::new() // should be unreachable but im not sure
+    };
+
+    for (i, over) in NAME_OVERRIDES[0].iter().enumerate() {
+        if *over == name {
+            return NAME_OVERRIDES[1][i].to_string();
+        }
+    }
+
+    name
+}

@@ -1,0 +1,17 @@
+[package]
+name = "swirly"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+backlight_control_rs = "1.0.0"
+env_logger = "0.11.6"
+futures-util = "0.3.31"
+#gio = "0.20.9"
+gtk4-layer-shell = "0.4.0"
+log = "0.4.26"
+relm4 = "0.9.1"
+starship-battery = "0.10.0"
+swayipc = "3.0.3"
+tokio = { version = "1.43.0", features = ["time"] }
+tracker = "0.2.2"

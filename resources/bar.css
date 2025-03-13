@@ -1,0 +1,119 @@
+:root {
+    --bg1: #161616;
+    --bg2: #262626;
+    --fg1: #f2f4f8;
+    --accent: #393939;
+}
+
+* {
+    border: 0 solid transparent;
+}
+
+label {
+    color: var(--fg1);
+    font-family: Noto Sans;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+window {
+    background-color: transparent;
+}
+
+.panel,
+.control_panel,
+.dock {
+    background-color: var(--bg1);
+}
+
+.control_panel {
+    background-color: var(--bg1);
+    padding: 8px;
+    border-radius: 1em;
+}
+
+.dock {
+    padding: 8px;
+    border-radius: 16px;
+}
+
+.indicator {
+    min-width: 128px;
+    min-height: 4px;
+    border-radius: 2px;
+    background-color: white;
+}
+
+.info_button,
+.toggle_button,
+.container {
+    background-image: none;
+    /*background-color: var(--bg2);*/
+    transition: 200ms ease-in-out;
+    padding: 0 4px;
+    border-radius: 8px;
+}
+
+.toggle_button,
+.container {
+    min-width: 60px;
+    background-color: var(--bg2);
+    padding: 8px 24px;
+    border-radius: 18px;
+}
+
+.toggle_button:active,
+.info_button:active {
+    transform: translate3d(0px, 2px, 2px);
+}
+
+.toggle_button_toggled {
+    background-color: var(--fg1);
+}
+
+.info_button:hover,
+.toggle_button:hover,
+.app:hover {
+    background-color: var(--accent);
+}
+
+.app {
+    padding: 8px;
+    border-radius: 16px;
+    background-image: none;
+    background-color: var(--bg2);
+    transition: 150ms ease-in-out;
+}
+
+scale {
+    color: white;
+    padding: 0px;
+}
+
+scale slider {
+    background-color: var(--fg1);
+    background-image: none;
+    border-radius: 100%;
+}
+
+scale trough {
+    min-height: 6px;
+    background-color: var(--accent);
+}
+
+scale trough highlight {
+    background-color: var(--fg1);
+}
+
+.active {
+    background-color: var(--fg1);
+}
+
+.active label {
+    color: var(--bg1);
+}
+
+.active:hover {
+    background-color: var(--fg1);
+    filter: brightness(90%);
+}
