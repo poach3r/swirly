@@ -40,7 +40,10 @@ impl Worker for AsyncHandler {
                         }
                         Event::Workspace(x) => {
                             sender
-                                .output(Output::UpdateWorkspaces(x.current.unwrap().num.unwrap()))
+                                .output(Output::UpdateWorkspaces(match x.current {
+                                    Some(node) => node.num.unwrap(),
+                                    None => 1,
+                                }))
                                 .unwrap();
                         }
                         _ => {
