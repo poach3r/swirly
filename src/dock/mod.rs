@@ -1,12 +1,18 @@
 mod app;
 mod indicator;
 
+use std::{fs::File, io::Read};
+
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use relm4::prelude::*;
 use swayipc::{Connection, Node, WindowChange, WindowEvent};
 
-const NAME_OVERRIDES: &[&[&str]] = &[&["dev.zed.Zed", "zen"], &["lite", "browser"]];
+#[derive(serde::Deserialize, Clone)]
+struct Overrides {
+    original_names: Vec<String>,
+    replacement_names: Vec<String>,
+}
 
 #[tracker::track]
 pub struct DockModel {
@@ -18,6 +24,8 @@ pub struct DockModel {
     indicator: Controller<indicator::IndicatorModel>,
     #[tracker::do_not_track]
     theme: gtk::IconTheme,
+    #[tracker::do_not_track]
+    overrides: Option<Overrides>,
 }
 
 #[derive(Debug)]
@@ -83,6 +91,7 @@ impl SimpleComponent for DockModel {
             apps,
             indicator,
             theme: gtk::IconTheme::for_display(&gtk::gdk::Display::default().unwrap()),
+            overrides: load_overrides(),
             tracker: 0,
         };
         let apps_box = model.apps.widget();
@@ -143,7 +152,7 @@ impl SimpleComponent for DockModel {
                 WindowChange::New => {
                     self.apps.guard().push_back((
                         x.container.id,
-                        get_name(&x.container),
+                        get_name(&x.container, &self.overrides),
                         x.container.focused,
                     ));
                 }
@@ -166,7 +175,11 @@ impl SimpleComponent for DockModel {
                     self.apps.guard().broadcast(app::Input::Unfocus);
                     self.apps.guard().insert(
                         index,
-                        (x.container.id, get_name(&x.container), x.container.focused),
+                        (
+                            x.container.id,
+                            get_name(&x.container, &self.overrides),
+                            x.container.focused,
+                        ),
                     );
                 }
                 _ => (),
@@ -183,14 +196,18 @@ impl SimpleComponent for DockModel {
 
                     for workspace in output.nodes.iter() {
                         for app in workspace.nodes.iter() {
-                            self.apps
-                                .guard()
-                                .push_back((app.id, get_name(app), app.focused));
+                            self.apps.guard().push_back((
+                                app.id,
+                                get_name(app, &self.overrides),
+                                app.focused,
+                            ));
                         }
                         for app in workspace.floating_nodes.iter() {
-                            self.apps
-                                .guard()
-                                .push_back((app.id, get_name(app), app.focused));
+                            self.apps.guard().push_back((
+                                app.id,
+                                get_name(app, &self.overrides),
+                                app.focused,
+                            ));
                         }
                     }
                 }
@@ -199,7 +216,42 @@ impl SimpleComponent for DockModel {
     }
 }
 
-fn get_name(app: &Node) -> String {
+fn load_overrides() -> Option<Overrides> {
+    let path = if let Some(x) = option_env!("XDG_CONFIG_HOME") {
+        format!("{x}/swirly/overrides.toml")
+    } else if let Some(x) = option_env!("HOME") {
+        format!("{x}/.config/swirly/overrides.toml")
+    } else {
+        log::error!("Failed to find overrides.");
+        return None;
+    };
+    let mut file = match File::open(path) {
+        Ok(x) => x,
+        Err(e) => {
+            log::error!("Failed to read overrides: {e}");
+            return None;
+        }
+    };
+
+    let mut buf = String::new();
+    match file.read_to_string(&mut buf) {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("Failed to read overrides: {e}");
+            return None;
+        }
+    }
+
+    match toml::from_str(&buf) {
+        Ok(x) => Some(x),
+        Err(e) => {
+            log::error!("Failed to parse overrides: {e}");
+            None
+        }
+    }
+}
+
+fn get_name(app: &Node, overrides: &Option<Overrides>) -> String {
     let name = if let Some(id) = &app.app_id {
         id.to_string()
     } else if let Some(props) = &app.window_properties {
@@ -210,9 +262,19 @@ fn get_name(app: &Node) -> String {
         String::new() // should be unreachable but im not sure
     };
 
-    for (i, over) in NAME_OVERRIDES[0].iter().enumerate() {
-        if *over == name {
-            return NAME_OVERRIDES[1][i].to_string();
+    if let Some(x) = overrides {
+        for (i, over) in x.original_names.iter().enumerate() {
+            if *over == name {
+                match x.replacement_names.get(i) {
+                    Some(x) => {
+                        return x.to_owned();
+                    }
+                    None => {
+                        log::error!("Failed to find matching override for {name}.");
+                        return name;
+                    }
+                }
+            }
         }
     }
 
