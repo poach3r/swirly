@@ -3,7 +3,6 @@
 mod bar;
 mod control_panel;
 mod dock;
-mod util;
 mod workers;
 
 use std::process::Command;
@@ -193,10 +192,12 @@ impl SimpleComponent for AppModel {
 }
 
 fn main() {
+    let css = include_str!("../resources/bar.css");
+
     env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
     let app = RelmApp::new("org.poach3r.swirly");
 
-    set_global_css(&crate::util::load_css("resources/bar.css"));
+    set_global_css(css);
     app.run::<AppModel>(());
 }
 

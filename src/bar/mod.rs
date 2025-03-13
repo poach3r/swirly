@@ -7,7 +7,7 @@ use swayipc::WindowEvent;
 
 use gtk::{glib::DateTime, prelude::*};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
-use relm4::{prelude::*, set_global_css};
+use relm4::prelude::*;
 
 pub struct BarModel {
     workspace: AsyncController<workspace::WorkspaceModel>,
@@ -129,10 +129,4 @@ impl SimpleComponent for BarModel {
             }
         }
     }
-}
-
-pub fn run() {
-    let app = RelmApp::new("org.poach3r.swirly.bar");
-    set_global_css(&crate::util::load_css("resources/bar.css"));
-    app.run::<BarModel>(());
 }

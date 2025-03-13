@@ -3,7 +3,6 @@ mod brightness;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use relm4::prelude::*;
-use relm4::set_global_css;
 
 #[tracker::track]
 pub struct ControlPanelModel {
@@ -149,7 +148,7 @@ impl SimpleComponent for ControlPanelModel {
                 self.brightness.emit(brightness::Input::Update(x));
             }
             Input::ReloadCSS => {
-                set_global_css(&crate::util::load_css("resources/bar.css"));
+                //set_global_css(&crate::util::load_css("resources/bar.css"));
             }
             Input::SetBrightness(x) => {
                 sender.output(Output::SetBrightness(x)).unwrap();
