@@ -23,6 +23,7 @@ struct AppModel {
     battery_worker: WorkerController<workers::battery_worker::AsyncHandler>,
     brightness_worker: WorkerController<workers::brightness_worker::AsyncHandler>,
     time_worker: WorkerController<workers::time_worker::AsyncHandler>,
+    audio_worker: WorkerController<workers::audio_worker::AsyncHandler>,
 }
 
 enum BrightnessMode {
@@ -42,6 +43,8 @@ pub enum Input {
     ToggleDock,
     ToggleTiling(bool),
     FocusWindow(i64),
+    UpdateVolume(f64),
+    SetVolume(f64),
 }
 
 #[relm4::component]
@@ -93,6 +96,11 @@ impl SimpleComponent for AppModel {
             .forward(sender.input_sender(), |msg| match msg {
                 workers::time_worker::Output::UpdateTime(x) => Input::UpdateTime(x),
             });
+        let audio_worker = workers::audio_worker::AsyncHandler::builder()
+            .detach_worker(())
+            .forward(sender.input_sender(), |msg| match msg {
+                workers::audio_worker::Output::UpdateVolume(x) => Input::UpdateVolume(x),
+            });
 
         let app = relm4::main_application();
         let bar_builder = bar::BarModel::builder();
@@ -114,6 +122,7 @@ impl SimpleComponent for AppModel {
                     control_panel::Output::ToggleTiling(x) => Input::ToggleTiling(x),
                     control_panel::Output::SetBrightness(x) => Input::SetBrightness(x),
                     control_panel::Output::ToggleDock => Input::ToggleDock,
+                    control_panel::Output::SetVolume(x) => Input::SetVolume(x),
                 });
         let dock = dock_builder
             .launch(())
@@ -131,6 +140,7 @@ impl SimpleComponent for AppModel {
             battery_worker,
             brightness_worker,
             time_worker,
+            audio_worker,
         };
         let widgets = view_output!();
 
@@ -187,6 +197,15 @@ impl SimpleComponent for AppModel {
             Input::FocusWindow(x) => self
                 .sway_executor
                 .emit(workers::sway_executor::Input::Focus(x)),
+            Input::UpdateVolume(x) => {
+                self.bar.emit(bar::Input::UpdateVolume(x));
+                self.control_panel
+                    .emit(control_panel::Input::UpdateVolume(x));
+            }
+            Input::SetVolume(x) => {
+                self.audio_worker
+                    .emit(workers::audio_worker::Input::SetVolume(x));
+            }
         }
     }
 }

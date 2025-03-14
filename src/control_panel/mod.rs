@@ -1,4 +1,5 @@
 mod brightness;
+mod volume;
 
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
@@ -11,6 +12,8 @@ pub struct ControlPanelModel {
     tiling: bool,
     #[tracker::do_not_track]
     brightness: AsyncController<brightness::BrightnessModel>,
+    #[tracker::do_not_track]
+    volume: AsyncController<volume::VolumeModel>,
 }
 
 #[derive(Debug)]
@@ -21,11 +24,14 @@ pub enum Input {
     SetBrightness(u32),
     ReloadCSS,
     ToggleTiling,
+    UpdateVolume(f64),
+    SetVolume(f64),
 }
 
 #[derive(Debug)]
 pub enum Output {
     SetBrightness(u32),
+    SetVolume(f64),
     ToggleDock,
     ToggleTiling(bool),
 }
@@ -76,23 +82,7 @@ impl SimpleComponent for ControlPanelModel {
                     },
                 },
                 model.brightness.widget(),
-                gtk::Box {
-                    add_css_class: "container",
-                    set_halign: gtk::Align::Fill,
-                    set_spacing: 4,
-                    set_orientation: gtk::Orientation::Vertical,
-
-                    gtk::Label {
-                        set_halign: gtk::Align::Center,
-                        set_text: "Volume"
-                    },
-
-                    gtk::Scale {
-                        set_halign: gtk::Align::Fill,
-                        set_range: (0.0, 100.0),
-                        set_value: 50.0,
-                    }
-                }
+                model.volume.widget(),
             }
         }
     }
@@ -108,12 +98,19 @@ impl SimpleComponent for ControlPanelModel {
                 brightness::Output::SetBrightness(x) => Input::SetBrightness(x),
             },
         );
+        let volume = volume::VolumeModel::builder().launch(()).forward(
+            sender.input_sender(),
+            |msg| match msg {
+                volume::Output::SetVolume(x) => Input::SetVolume(x),
+            },
+        );
 
         let model = Self {
             visible: false,
             dock_enabled: true,
             tiling: true,
             brightness,
+            volume,
             tracker: 0,
         };
 
@@ -156,6 +153,12 @@ impl SimpleComponent for ControlPanelModel {
             Input::ToggleTiling => {
                 self.set_tiling(!self.tiling);
                 sender.output(Output::ToggleTiling(self.tiling)).unwrap();
+            }
+            Input::UpdateVolume(x) => {
+                self.volume.emit(volume::Input::Update(x));
+            }
+            Input::SetVolume(x) => {
+                sender.output(Output::SetVolume(x)).unwrap();
             }
         }
     }

@@ -1,6 +1,7 @@
 mod battery;
 mod brightness;
 mod time;
+mod volume;
 mod workspace;
 
 use swayipc::WindowEvent;
@@ -14,16 +15,18 @@ pub struct BarModel {
     brightness: AsyncController<brightness::BrightnessModel>,
     battery: AsyncController<battery::BatteryModel>,
     time: AsyncController<time::TimeModel>,
+    volume: AsyncController<volume::VolumeModel>,
 }
 
 #[derive(Debug)]
 pub enum Input {
+    ToggleControlPanel,
     UpdateBrightness(u32),
     UpdateBattery(f32),
     UpdateWorkspaces(i32),
     UpdateWindows(Box<WindowEvent>),
     UpdateTime(DateTime),
-    ToggleControlPanel,
+    UpdateVolume(f64),
 }
 
 #[derive(Debug)]
@@ -62,6 +65,7 @@ impl SimpleComponent for BarModel {
                 set_end_widget = &gtk::Box {
                     set_margin_all: 4,
                     set_spacing: 4,
+                    model.volume.widget(),
                     model.brightness.widget(),
                     model.battery.widget(),
                     gtk::Button {
@@ -87,12 +91,14 @@ impl SimpleComponent for BarModel {
         let time = time::TimeModel::builder().launch(()).detach();
         let brightness = brightness::BrightnessModel::builder().launch(()).detach();
         let battery = battery::BatteryModel::builder().launch(()).detach();
+        let volume = volume::VolumeModel::builder().launch(()).detach();
 
         let model = BarModel {
             workspace,
             brightness,
             battery,
             time,
+            volume,
         };
         let widgets = view_output!();
 
@@ -113,6 +119,9 @@ impl SimpleComponent for BarModel {
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
+            Input::ToggleControlPanel => {
+                sender.output(Output::ToggleControlPanel).unwrap();
+            }
             Input::UpdateBrightness(x) => {
                 self.brightness.sender().emit(brightness::Input::Update(x))
             }
@@ -124,8 +133,8 @@ impl SimpleComponent for BarModel {
             Input::UpdateTime(x) => {
                 self.time.emit(time::Input::Update(x));
             }
-            Input::ToggleControlPanel => {
-                sender.output(Output::ToggleControlPanel).unwrap();
+            Input::UpdateVolume(x) => {
+                self.volume.emit(volume::Input::Update(x));
             }
         }
     }
