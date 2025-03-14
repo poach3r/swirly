@@ -20,12 +20,6 @@ window {
     background-color: transparent;
 }
 
-.separator {
-    background-color: var(--fg1);
-    padding: 0px 2px;
-    border-radius: 28px;
-}
-
 .panel,
 .control_panel,
 .dock {

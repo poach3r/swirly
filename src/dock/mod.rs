@@ -66,7 +66,6 @@ impl SimpleComponent for DockModel {
             set_visible: model.visible && model.enabled,
 
             gtk::Box {
-                add_css_class: "dock",
                 set_margin_all: 8,
                 set_spacing: 8,
                 add_controller = gtk::EventControllerMotion {
@@ -75,15 +74,8 @@ impl SimpleComponent for DockModel {
 
                 #[local_ref]
                 launchables_box -> gtk::Box {
+                    add_css_class: "dock",
                     set_spacing: 8,
-                },
-
-                gtk::Box {
-                    #[track = "model.changed_apps_count()"]
-                    set_visible: model.apps_count > 0,
-                    set_valign: gtk::Align::Fill,
-                    add_css_class: "separator",
-
                 },
 
                 #[local_ref]
@@ -91,6 +83,7 @@ impl SimpleComponent for DockModel {
                     #[track = "model.changed_apps_count()"]
                     set_visible: model.apps_count > 0,
                     set_spacing: 8,
+                    add_css_class: "dock",
                 },
             }
         }
