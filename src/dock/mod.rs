@@ -1,5 +1,6 @@
 mod app;
 mod indicator;
+mod launchable;
 
 use std::{fs::File, io::Read};
 
@@ -14,6 +15,12 @@ struct Overrides {
     replacement_names: Vec<String>,
 }
 
+#[derive(serde::Deserialize, Clone)]
+struct Launchables {
+    icons: Vec<String>,
+    commands: Vec<String>,
+}
+
 #[tracker::track]
 pub struct DockModel {
     enabled: bool,
@@ -21,11 +28,14 @@ pub struct DockModel {
     #[tracker::do_not_track]
     apps: AsyncFactoryVecDeque<app::AppModel>,
     #[tracker::do_not_track]
+    launchables: AsyncFactoryVecDeque<launchable::LaunchableModel>,
+    #[tracker::do_not_track]
     indicator: Controller<indicator::IndicatorModel>,
     #[tracker::do_not_track]
     theme: gtk::IconTheme,
     #[tracker::do_not_track]
     overrides: Option<Overrides>,
+    apps_count: usize,
 }
 
 #[derive(Debug)]
@@ -55,15 +65,34 @@ impl SimpleComponent for DockModel {
             #[track = "model.changed_visible() || model.changed_enabled()"]
             set_visible: model.visible && model.enabled,
 
-            #[local_ref]
-            apps_box -> gtk::Box {
+            gtk::Box {
                 add_css_class: "dock",
-                set_spacing: 8,
                 set_margin_all: 8,
+                set_spacing: 8,
                 add_controller = gtk::EventControllerMotion {
                     connect_leave => Input::Leave,
-                }
-            },
+                },
+
+                #[local_ref]
+                launchables_box -> gtk::Box {
+                    set_spacing: 8,
+                },
+
+                gtk::Box {
+                    #[track = "model.changed_apps_count()"]
+                    set_visible: model.apps_count > 0,
+                    set_valign: gtk::Align::Fill,
+                    add_css_class: "separator",
+
+                },
+
+                #[local_ref]
+                apps_box -> gtk::Box {
+                    #[track = "model.changed_apps_count()"]
+                    set_visible: model.apps_count > 0,
+                    set_spacing: 8,
+                },
+            }
         }
     }
 
@@ -77,6 +106,18 @@ impl SimpleComponent for DockModel {
             .forward(sender.input_sender(), |msg| match msg {
                 app::Output::Focus(x) => Input::Focus(x),
             });
+
+        let mut launchables = AsyncFactoryVecDeque::builder()
+            .launch(gtk::Box::default())
+            .detach();
+        if let Some(x) = load_launchables() {
+            for (i, y) in x.icons.iter().enumerate() {
+                launchables
+                    .guard()
+                    .push_back((y.to_owned(), x.commands[i].clone()));
+            }
+        }
+
         let indicator_builder = indicator::IndicatorModel::builder();
         relm4::main_application().add_window(&indicator_builder.root);
         let indicator =
@@ -85,16 +126,21 @@ impl SimpleComponent for DockModel {
                 .forward(sender.input_sender(), |msg| match msg {
                     indicator::Output::Enter => Input::Enter,
                 });
+
         let model = DockModel {
             enabled: true,
             visible: false,
             apps,
+            launchables,
             indicator,
             theme: gtk::IconTheme::for_display(&gtk::gdk::Display::default().unwrap()),
             overrides: load_overrides(),
+            apps_count: 0,
             tracker: 0,
         };
+
         let apps_box = model.apps.widget();
+        let launchables_box = model.launchables.widget();
         let widgets = view_output!();
 
         widgets.window.init_layer_shell();
@@ -131,59 +177,62 @@ impl SimpleComponent for DockModel {
                 self.set_enabled(!self.enabled);
                 self.indicator.emit(indicator::Input::Toggle);
             }
-            Input::Update(x) => match x.change {
-                WindowChange::Close => {
-                    let mut index: usize = 999;
-                    for (i, app) in self.apps.guard().iter().enumerate() {
-                        if let None = app {
-                            continue;
+            Input::Update(x) => {
+                match x.change {
+                    WindowChange::Close => {
+                        let mut index: usize = 999;
+                        for (i, app) in self.apps.guard().iter().enumerate() {
+                            if let None = app {
+                                continue;
+                            }
+
+                            if app.unwrap().id == x.container.id {
+                                index = i;
+                            }
+                        }
+                        if index == 999 {
+                            return;
                         }
 
-                        if app.unwrap().id == x.container.id {
-                            index = i;
-                        }
+                        self.apps.guard().remove(index);
                     }
-                    if index == 999 {
-                        return;
-                    }
-
-                    self.apps.guard().remove(index);
-                }
-                WindowChange::New => {
-                    self.apps.guard().push_back((
-                        x.container.id,
-                        get_name(&x.container, &self.overrides),
-                        x.container.focused,
-                    ));
-                }
-                WindowChange::Focus => {
-                    let mut index: usize = 999;
-                    for (i, app) in self.apps.guard().iter().enumerate() {
-                        if let None = app {
-                            continue;
-                        }
-
-                        if app.unwrap().id == x.container.id {
-                            index = i;
-                        }
-                    }
-                    if index == 999 {
-                        return;
-                    }
-
-                    self.apps.guard().remove(index);
-                    self.apps.guard().broadcast(app::Input::Unfocus);
-                    self.apps.guard().insert(
-                        index,
-                        (
+                    WindowChange::New => {
+                        self.apps.guard().push_back((
                             x.container.id,
                             get_name(&x.container, &self.overrides),
                             x.container.focused,
-                        ),
-                    );
+                        ));
+                    }
+                    WindowChange::Focus => {
+                        let mut index: usize = 999;
+                        for (i, app) in self.apps.guard().iter().enumerate() {
+                            if let None = app {
+                                continue;
+                            }
+
+                            if app.unwrap().id == x.container.id {
+                                index = i;
+                            }
+                        }
+                        if index == 999 {
+                            return;
+                        }
+
+                        self.apps.guard().remove(index);
+                        self.apps.guard().broadcast(app::Input::Unfocus);
+                        self.apps.guard().insert(
+                            index,
+                            (
+                                x.container.id,
+                                get_name(&x.container, &self.overrides),
+                                x.container.focused,
+                            ),
+                        );
+                    }
+                    _ => (),
                 }
-                _ => (),
-            },
+                self.set_apps_count(self.apps.len());
+            }
             Input::Init => {
                 self.apps.guard().clear();
                 let mut connection = Connection::new().unwrap();
@@ -211,6 +260,7 @@ impl SimpleComponent for DockModel {
                         }
                     }
                 }
+                self.set_apps_count(self.apps.len());
             }
         }
     }
@@ -246,6 +296,41 @@ fn load_overrides() -> Option<Overrides> {
         Ok(x) => Some(x),
         Err(e) => {
             log::error!("Failed to parse overrides: {e}");
+            None
+        }
+    }
+}
+
+fn load_launchables() -> Option<Launchables> {
+    let path = if let Some(x) = option_env!("XDG_CONFIG_HOME") {
+        format!("{x}/swirly/launchables.toml")
+    } else if let Some(x) = option_env!("HOME") {
+        format!("{x}/.config/swirly/launchables.toml")
+    } else {
+        log::error!("Failed to find launchables.");
+        return None;
+    };
+    let mut file = match File::open(path) {
+        Ok(x) => x,
+        Err(e) => {
+            log::error!("Failed to read launchables: {e}");
+            return None;
+        }
+    };
+
+    let mut buf = String::new();
+    match file.read_to_string(&mut buf) {
+        Ok(_) => (),
+        Err(e) => {
+            log::error!("Failed to read launchables: {e}");
+            return None;
+        }
+    }
+
+    match toml::from_str(&buf) {
+        Ok(x) => Some(x),
+        Err(e) => {
+            log::error!("Failed to parse launchables: {e}");
             None
         }
     }
