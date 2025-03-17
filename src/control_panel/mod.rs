@@ -1,6 +1,8 @@
 mod brightness;
 mod volume;
 
+use std::process::Command;
+
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use relm4::prelude::*;
@@ -10,6 +12,7 @@ pub struct ControlPanelModel {
     visible: bool,
     dock_enabled: bool,
     tiling: bool,
+    notifs: bool,
     #[tracker::do_not_track]
     brightness: AsyncController<brightness::BrightnessModel>,
     #[tracker::do_not_track]
@@ -26,6 +29,7 @@ pub enum Input {
     ToggleTiling,
     UpdateVolume(f64),
     SetVolume(f64),
+    ToggleNotifs,
 }
 
 #[derive(Debug)]
@@ -78,7 +82,10 @@ impl SimpleComponent for ControlPanelModel {
                     },
                     attach[2, 2, 1, 1] = &gtk::Button {
                         add_css_class: "toggle_button",
+                        #[track = "model.changed_notifs()"]
+                        set_class_active: ("active", model.notifs),
                         set_label: "Notifs",
+                        connect_clicked => Input::ToggleNotifs,
                     },
                 },
                 model.brightness.widget(),
@@ -109,6 +116,7 @@ impl SimpleComponent for ControlPanelModel {
             visible: false,
             dock_enabled: true,
             tiling: true,
+            notifs: true,
             brightness,
             volume,
             tracker: 0,
@@ -159,6 +167,19 @@ impl SimpleComponent for ControlPanelModel {
             }
             Input::SetVolume(x) => {
                 sender.output(Output::SetVolume(x)).unwrap();
+            }
+            Input::ToggleNotifs => {
+                match Command::new("swaync-client")
+                    .arg(if self.notifs { "-dn" } else { "-df" })
+                    .output()
+                {
+                    Ok(_) => {
+                        self.set_notifs(!self.notifs);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to toggle notifications: {e}");
+                    }
+                }
             }
         }
     }

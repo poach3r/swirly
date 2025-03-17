@@ -15,6 +15,8 @@ Swirly is a Rust-based desktop shell for the Sway compositor.
 
 `brightnessctl` (optional fallback brightness control)
 
+`swaync` (optional notifications)
+
 ## Configuration
 Configuration files are stored within `XDG_CONFIG_HOME/swirly/` or `HOME/.config/swirly/`.
 
