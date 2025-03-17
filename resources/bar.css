@@ -29,7 +29,7 @@ window {
 .control_panel {
     background-color: var(--bg1);
     padding: 8px;
-    border-radius: 1em;
+    border-radius: 16px;
 }
 
 .dock {
