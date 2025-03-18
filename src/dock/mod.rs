@@ -175,12 +175,10 @@ impl SimpleComponent for DockModel {
                     WindowChange::Close => {
                         let mut index: usize = 999;
                         for (i, app) in self.apps.guard().iter().enumerate() {
-                            if let None = app {
-                                continue;
-                            }
-
-                            if app.unwrap().id == x.container.id {
-                                index = i;
+                            if let Some(app) = app {
+                                if app.id == x.container.id {
+                                    index = i;
+                                }
                             }
                         }
                         if index == 999 {
@@ -199,12 +197,10 @@ impl SimpleComponent for DockModel {
                     WindowChange::Focus => {
                         let mut index: usize = 999;
                         for (i, app) in self.apps.guard().iter().enumerate() {
-                            if let None = app {
-                                continue;
-                            }
-
-                            if app.unwrap().id == x.container.id {
-                                index = i;
+                            if let Some(app) = app {
+                                if app.id == x.container.id {
+                                    index = i;
+                                }
                             }
                         }
                         if index == 999 {
