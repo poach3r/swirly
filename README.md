@@ -5,6 +5,9 @@ Swirly is a Rust-based desktop shell for the Sway compositor.
 
 ## Dependencies
 **NOTE: THIS IS NOT A COMPREHENSIVE LIST, CREATE AN ISSUE IF A DEPENDENCY IS NOT LISTED HERE.**
+
+`rust`
+
 `sway`
 
 `gtk4`
