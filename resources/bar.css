@@ -26,15 +26,11 @@ window {
     background-color: var(--bg1);
 }
 
+.dock,
 .control_panel {
-    background-color: var(--bg1);
+    border: 3px solid var(--bg2);
     padding: 8px;
-    border-radius: 16px;
-}
-
-.dock {
-    padding: 8px;
-    border-radius: 16px;
+    border-radius: 10px;
 }
 
 .indicator {
@@ -59,7 +55,7 @@ window {
     min-width: 60px;
     background-color: var(--bg2);
     padding: 8px 24px;
-    border-radius: 18px;
+    border-radius: 10px;
 }
 
 .toggle_button:active,
@@ -80,7 +76,7 @@ window {
 
 .app {
     padding: 8px;
-    border-radius: 16px;
+    border-radius: 10px;
     background-image: none;
     background-color: var(--bg2);
     transition: 150ms ease-in-out;
