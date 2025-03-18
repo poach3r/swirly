@@ -46,11 +46,13 @@ pub enum Input {
     Toggle,
     Update(Box<WindowEvent>),
     Focus(i64),
+    Launch(String),
 }
 
 #[derive(Debug)]
 pub enum Output {
     Focus(i64),
+    Launch(String),
 }
 
 #[relm4::component(pub)]
@@ -102,7 +104,9 @@ impl SimpleComponent for DockModel {
 
         let mut launchables = AsyncFactoryVecDeque::builder()
             .launch(gtk::Box::default())
-            .detach();
+            .forward(sender.input_sender(), |msg| match msg {
+                launchable::Output::Launch(x) => Input::Launch(x),
+            });
         if let Some(x) = load_launchables() {
             for (i, y) in x.icons.iter().enumerate() {
                 launchables
@@ -156,6 +160,9 @@ impl SimpleComponent for DockModel {
         self.reset();
 
         match msg {
+            Input::Launch(x) => {
+                sender.output(Output::Launch(x)).unwrap();
+            }
             Input::Focus(x) => {
                 sender.output(Output::Focus(x)).unwrap();
             }

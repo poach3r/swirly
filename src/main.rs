@@ -45,6 +45,7 @@ pub enum Input {
     FocusWindow(i64),
     UpdateVolume(f64),
     SetVolume(f64),
+    ArbitrarySwayMsg(String),
 }
 
 #[relm4::component]
@@ -128,6 +129,7 @@ impl SimpleComponent for AppModel {
             .launch(())
             .forward(sender.input_sender(), |msg| match msg {
                 dock::Output::Focus(x) => Input::FocusWindow(x),
+                dock::Output::Launch(x) => Input::ArbitrarySwayMsg(x),
             });
 
         let model = AppModel {
@@ -205,6 +207,10 @@ impl SimpleComponent for AppModel {
             Input::SetVolume(x) => {
                 self.audio_worker
                     .emit(workers::audio_worker::Input::SetVolume(x));
+            }
+            Input::ArbitrarySwayMsg(x) => {
+                self.sway_executor
+                    .emit(workers::sway_executor::Input::ArbitrarySwayMsg(x));
             }
         }
     }
