@@ -30,7 +30,7 @@ window {
 .control_panel {
     border: 3px solid var(--bg2);
     padding: 8px;
-    border-radius: 10px;
+    border-radius: 18px;
 }
 
 .indicator {
