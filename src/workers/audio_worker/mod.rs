@@ -1,14 +1,10 @@
 mod poller;
 mod utils;
 
-use libpulse_binding::context::{Context, State};
-use libpulse_binding::error::PAErr;
+use libpulse_binding::context::Context;
 use libpulse_binding::mainloop::standard::Mainloop;
-use libpulse_binding::volume::{ChannelVolumes, Volume};
 use relm4::{Component, ComponentSender, Worker, WorkerController};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use utils::percentage_to_volume;
 
 pub struct AsyncHandler {
     poller: WorkerController<poller::AsyncHandler>,

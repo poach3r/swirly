@@ -2,9 +2,7 @@ use libpulse_binding::context::{Context, State};
 use libpulse_binding::error::PAErr;
 use libpulse_binding::mainloop::standard::Mainloop;
 use libpulse_binding::volume::{ChannelVolumes, Volume};
-use relm4::{ComponentSender, Worker};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 // code is from https://github.com/de-vri-es/volume-ctl
 
