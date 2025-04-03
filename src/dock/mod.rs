@@ -7,7 +7,9 @@ use std::{fs::File, io::Read};
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use relm4::prelude::*;
-use swayipc::{Connection, Node, WindowChange, WindowEvent};
+use wayfire_rs::ipc::WayfireSocket;
+
+use crate::{WayfireEvent, WayfireEventType};
 
 #[derive(serde::Deserialize, Clone)]
 struct Overrides {
@@ -23,6 +25,8 @@ struct Launchables {
 
 #[tracker::track]
 pub struct DockModel {
+    #[tracker::do_not_track]
+    socket: WayfireSocket,
     enabled: bool,
     visible: bool,
     #[tracker::do_not_track]
@@ -44,22 +48,16 @@ pub enum Input {
     Enter,
     Leave,
     Toggle,
-    Update(Box<WindowEvent>),
+    Update(Box<WayfireEvent>),
     Focus(i64),
-    Launch(String),
 }
 
-#[derive(Debug)]
-pub enum Output {
-    Focus(i64),
-    Launch(String),
-}
-
-#[relm4::component(pub)]
-impl SimpleComponent for DockModel {
+#[relm4::component(pub async)]
+impl AsyncComponent for DockModel {
     type Init = ();
     type Input = Input;
-    type Output = Output;
+    type Output = ();
+    type CommandOutput = ();
 
     view! {
         #[name = "window"]
@@ -91,11 +89,11 @@ impl SimpleComponent for DockModel {
         }
     }
 
-    fn init(
+    async fn init(
         _init: Self::Init,
         root: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> ComponentParts<Self> {
+        sender: AsyncComponentSender<Self>,
+    ) -> AsyncComponentParts<Self> {
         let apps = AsyncFactoryVecDeque::builder()
             .launch(gtk::Box::default())
             .forward(sender.input_sender(), |msg| match msg {
@@ -104,9 +102,7 @@ impl SimpleComponent for DockModel {
 
         let mut launchables = AsyncFactoryVecDeque::builder()
             .launch(gtk::Box::default())
-            .forward(sender.input_sender(), |msg| match msg {
-                launchable::Output::Launch(x) => Input::Launch(x),
-            });
+            .detach();
         if let Some(x) = load_launchables() {
             for (i, y) in x.icons.iter().enumerate() {
                 launchables
@@ -125,6 +121,7 @@ impl SimpleComponent for DockModel {
                 });
 
         let model = DockModel {
+            socket: WayfireSocket::connect().await.unwrap(),
             enabled: true,
             visible: false,
             apps,
@@ -153,18 +150,22 @@ impl SimpleComponent for DockModel {
 
         sender.input(Input::Init);
 
-        ComponentParts { model, widgets }
+        AsyncComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+    async fn update(
+        &mut self,
+        msg: Self::Input,
+        _sender: AsyncComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
         self.reset();
 
         match msg {
-            Input::Launch(x) => {
-                sender.output(Output::Launch(x)).unwrap();
-            }
-            Input::Focus(x) => {
-                sender.output(Output::Focus(x)).unwrap();
+            Input::Focus(id) => {
+                if let Err(e) = self.socket.set_focus(id).await {
+                    log::error!("Failed to focus {id}: {e}");
+                }
             }
             Input::Enter => {
                 self.set_visible(true);
@@ -177,13 +178,17 @@ impl SimpleComponent for DockModel {
                 self.set_enabled(!self.enabled);
                 self.indicator.emit(indicator::Input::Toggle);
             }
-            Input::Update(x) => {
-                match x.change {
-                    WindowChange::Close => {
+            Input::Update(event) => {
+                if &event.name == "gtk4-layer-shell" {
+                    return;
+                }
+
+                match event.event_type {
+                    WayfireEventType::Close => {
                         let mut index: usize = 999;
                         for (i, app) in self.apps.guard().iter().enumerate() {
                             if let Some(app) = app {
-                                if app.id == x.container.id {
+                                if app.id == event.id {
                                     index = i;
                                 }
                             }
@@ -194,18 +199,18 @@ impl SimpleComponent for DockModel {
 
                         self.apps.guard().remove(index);
                     }
-                    WindowChange::New => {
+                    WayfireEventType::New => {
                         self.apps.guard().push_back((
-                            x.container.id,
-                            get_name(&x.container, &self.overrides),
-                            x.container.focused,
+                            event.id,
+                            get_name(event.name, &self.overrides),
+                            false,
                         ));
                     }
-                    WindowChange::Focus => {
+                    WayfireEventType::Focus => {
                         let mut index: usize = 999;
                         for (i, app) in self.apps.guard().iter().enumerate() {
                             if let Some(app) = app {
-                                if app.id == x.container.id {
+                                if app.id == event.id {
                                     index = i;
                                 }
                             }
@@ -218,44 +223,22 @@ impl SimpleComponent for DockModel {
                         self.apps.guard().broadcast(app::Input::Unfocus);
                         self.apps.guard().insert(
                             index,
-                            (
-                                x.container.id,
-                                get_name(&x.container, &self.overrides),
-                                x.container.focused,
-                            ),
+                            (event.id, get_name(event.name, &self.overrides), true),
                         );
                     }
-                    _ => (),
                 }
                 self.set_apps_count(self.apps.len());
             }
             Input::Init => {
                 self.apps.guard().clear();
-                let mut connection = Connection::new().unwrap();
-                for output in connection.get_tree().unwrap().nodes.iter() {
-                    if let Some(name) = &output.name {
-                        if name == "__i3" {
-                            continue;
-                        }
-                    }
 
-                    for workspace in output.nodes.iter() {
-                        for app in workspace.nodes.iter() {
-                            self.apps.guard().push_back((
-                                app.id,
-                                get_name(app, &self.overrides),
-                                app.focused,
-                            ));
-                        }
-                        for app in workspace.floating_nodes.iter() {
-                            self.apps.guard().push_back((
-                                app.id,
-                                get_name(app, &self.overrides),
-                                app.focused,
-                            ));
-                        }
+                for view in self.socket.list_views().await.unwrap() {
+                    if &view.layer != "workspace" {
+                        continue;
                     }
+                    self.apps.guard().push_back((view.id, view.app_id, false));
                 }
+
                 self.set_apps_count(self.apps.len());
             }
         }
@@ -332,17 +315,7 @@ fn load_launchables() -> Option<Launchables> {
     }
 }
 
-fn get_name(app: &Node, overrides: &Option<Overrides>) -> String {
-    let name = if let Some(id) = &app.app_id {
-        id.to_string()
-    } else if let Some(props) = &app.window_properties {
-        props.class.clone().unwrap()
-    } else if let Some(name) = &app.name {
-        name.to_owned()
-    } else {
-        String::new() // should be unreachable but im not sure
-    };
-
+fn get_name(name: String, overrides: &Option<Overrides>) -> String {
     if let Some(x) = overrides {
         for (i, over) in x.original_names.iter().enumerate() {
             if *over == name {

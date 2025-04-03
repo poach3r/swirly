@@ -8,7 +8,6 @@ mod workers;
 use std::process::Command;
 
 use env_logger::Env;
-use swayipc::WindowEvent;
 
 use gtk::{glib::DateTime, prelude::*};
 use relm4::{prelude::*, set_global_css, WorkerController};
@@ -17,9 +16,8 @@ struct AppModel {
     brightness_mode: BrightnessMode,
     bar: Controller<bar::BarModel>,
     control_panel: Controller<control_panel::ControlPanelModel>,
-    dock: Controller<dock::DockModel>,
-    sway_worker: WorkerController<workers::sway_worker::AsyncHandler>,
-    sway_executor: WorkerController<workers::sway_executor::AsyncHandler>,
+    dock: AsyncController<dock::DockModel>,
+    wayfire_worker: WorkerController<workers::wayfire_worker::AsyncHandler>,
     battery_worker: WorkerController<workers::battery_worker::AsyncHandler>,
     brightness_worker: WorkerController<workers::brightness_worker::AsyncHandler>,
     time_worker: WorkerController<workers::time_worker::AsyncHandler>,
@@ -36,16 +34,14 @@ pub enum Input {
     SetBrightness(u32),
     UpdateBrightness(u32),
     UpdateBattery(f32),
-    UpdateWorkspaces(i32),
-    UpdateWindows(Box<WindowEvent>),
+    UpdateWorkspaces(i64),
+    UpdateWindows(Box<WayfireEvent>),
     UpdateTime(DateTime),
     ToggleControlPanel,
     ToggleDock,
     ToggleTiling(bool),
-    FocusWindow(i64),
     UpdateVolume(f64),
     SetVolume(f64),
-    ArbitrarySwayMsg(String),
 }
 
 #[relm4::component]
@@ -65,15 +61,12 @@ impl SimpleComponent for AppModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let sway_worker = workers::sway_worker::AsyncHandler::builder()
+        let wayfire_worker = workers::wayfire_worker::AsyncHandler::builder()
             .detach_worker(())
             .forward(sender.input_sender(), |msg| match msg {
-                workers::sway_worker::Output::UpdateWorkspaces(i) => Input::UpdateWorkspaces(i),
-                workers::sway_worker::Output::UpdateWindows(x) => Input::UpdateWindows(x),
+                workers::wayfire_worker::Output::UpdateWorkspaces(i) => Input::UpdateWorkspaces(i),
+                workers::wayfire_worker::Output::UpdateWindows(x) => Input::UpdateWindows(x),
             });
-        let sway_executor = workers::sway_executor::AsyncHandler::builder()
-            .detach_worker(())
-            .detach();
         let battery_worker = workers::battery_worker::AsyncHandler::builder()
             .detach_worker(match get_battery() {
                 Ok(x) => Some(x),
@@ -125,20 +118,14 @@ impl SimpleComponent for AppModel {
                     control_panel::Output::ToggleDock => Input::ToggleDock,
                     control_panel::Output::SetVolume(x) => Input::SetVolume(x),
                 });
-        let dock = dock_builder
-            .launch(())
-            .forward(sender.input_sender(), |msg| match msg {
-                dock::Output::Focus(x) => Input::FocusWindow(x),
-                dock::Output::Launch(x) => Input::ArbitrarySwayMsg(x),
-            });
+        let dock = dock_builder.launch(()).detach();
 
         let model = AppModel {
             brightness_mode: BrightnessMode::BacklightControl,
             bar,
             control_panel,
             dock,
-            sway_worker,
-            sway_executor,
+            wayfire_worker,
             battery_worker,
             brightness_worker,
             time_worker,
@@ -151,10 +138,7 @@ impl SimpleComponent for AppModel {
 
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
-            Input::ToggleTiling(x) => {
-                self.sway_executor
-                    .emit(workers::sway_executor::Input::ToggleTiling(x));
-            }
+            Input::ToggleTiling(x) => {}
             Input::SetBrightness(x) => match self.brightness_mode {
                 BrightnessMode::BacklightControl => {
                     match backlight_control_rs::adjust_brightness_absolute(x, true) {
@@ -196,9 +180,6 @@ impl SimpleComponent for AppModel {
             }
             Input::ToggleControlPanel => self.control_panel.emit(control_panel::Input::Toggle),
             Input::ToggleDock => self.dock.emit(dock::Input::Toggle),
-            Input::FocusWindow(x) => self
-                .sway_executor
-                .emit(workers::sway_executor::Input::Focus(x)),
             Input::UpdateVolume(x) => {
                 self.bar.emit(bar::Input::UpdateVolume(x));
                 self.control_panel
@@ -208,12 +189,22 @@ impl SimpleComponent for AppModel {
                 self.audio_worker
                     .emit(workers::audio_worker::Input::SetVolume(x));
             }
-            Input::ArbitrarySwayMsg(x) => {
-                self.sway_executor
-                    .emit(workers::sway_executor::Input::ArbitrarySwayMsg(x));
-            }
         }
     }
+}
+
+#[derive(Debug)]
+pub enum WayfireEventType {
+    New,
+    Close,
+    Focus,
+}
+
+#[derive(Debug)]
+pub struct WayfireEvent {
+    event_type: WayfireEventType,
+    id: i64,
+    name: String,
 }
 
 fn main() {

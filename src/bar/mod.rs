@@ -23,7 +23,7 @@ pub enum Input {
     ToggleControlPanel,
     UpdateBrightness(u32),
     UpdateBattery(f32),
-    UpdateWorkspaces(i32),
+    UpdateWorkspaces(i64),
     UpdateWindows(Box<WindowEvent>),
     UpdateTime(DateTime),
     UpdateVolume(f64),

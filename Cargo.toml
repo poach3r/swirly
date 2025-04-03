@@ -17,3 +17,5 @@ tracker = "0.2.2"
 toml = "0.8.20"
 serde = { version = "1.0.219", features = ["derive"] }
 libpulse-binding = "2.29.0"
+wayfire-rs = "0.2.2"
+async-process = "2.3.0"

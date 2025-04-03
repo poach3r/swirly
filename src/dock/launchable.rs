@@ -1,3 +1,5 @@
+use async_process::Command;
+
 use gtk::prelude::*;
 use relm4::prelude::*;
 
@@ -11,16 +13,11 @@ pub enum Input {
     Clicked,
 }
 
-#[derive(Debug, Clone)]
-pub enum Output {
-    Launch(String),
-}
-
 #[relm4::factory(pub async)]
 impl AsyncFactoryComponent for LaunchableModel {
     type Init = (String, String);
     type Input = Input;
-    type Output = Output;
+    type Output = ();
     type CommandOutput = ();
     type ParentWidget = gtk::Box;
 
@@ -48,11 +45,13 @@ impl AsyncFactoryComponent for LaunchableModel {
         }
     }
 
-    async fn update(&mut self, msg: Self::Input, sender: AsyncFactorySender<Self>) {
+    async fn update(&mut self, msg: Self::Input, _sender: AsyncFactorySender<Self>) {
         match msg {
-            Input::Clicked => sender
-                .output(Output::Launch(format!("exec {}", self.command)))
-                .unwrap(),
+            Input::Clicked => {
+                if let Err(e) = Command::new(&self.command).spawn() {
+                    log::error!("Failed to execute {}: {e}", self.command)
+                };
+            }
         }
     }
 }

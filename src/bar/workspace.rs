@@ -2,12 +2,12 @@ use gtk::prelude::*;
 use relm4::prelude::*;
 
 pub struct WorkspaceModel {
-    index: i32,
+    index: i64,
 }
 
 #[derive(Debug)]
 pub enum WorkspaceInput {
-    Select(i32),
+    Select(i64),
 }
 
 #[relm4::component(pub async)]
