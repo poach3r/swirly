@@ -6,6 +6,8 @@ use std::process::Command;
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use relm4::prelude::*;
+use serde_json::json;
+use wayfire_rs::ipc::WayfireSocket;
 
 #[tracker::track]
 pub struct ControlPanelModel {
@@ -37,14 +39,14 @@ pub enum Output {
     SetBrightness(u32),
     SetVolume(f64),
     ToggleDock,
-    ToggleTiling(bool),
 }
 
-#[relm4::component(pub)]
-impl SimpleComponent for ControlPanelModel {
+#[relm4::component(async pub)]
+impl AsyncComponent for ControlPanelModel {
     type Init = ();
     type Input = Input;
     type Output = Output;
+    type CommandOutput = ();
 
     view! {
         #[name = "window"]
@@ -94,11 +96,11 @@ impl SimpleComponent for ControlPanelModel {
         }
     }
 
-    fn init(
+    async fn init(
         _init: Self::Init,
         root: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> ComponentParts<Self> {
+        sender: AsyncComponentSender<Self>,
+    ) -> AsyncComponentParts<Self> {
         let brightness = brightness::BrightnessModel::builder().launch(()).forward(
             sender.input_sender(),
             |msg| match msg {
@@ -115,7 +117,7 @@ impl SimpleComponent for ControlPanelModel {
         let model = Self {
             visible: false,
             dock_enabled: true,
-            tiling: true,
+            tiling: false,
             notifs: true,
             brightness,
             volume,
@@ -135,10 +137,15 @@ impl SimpleComponent for ControlPanelModel {
             widgets.window.set_anchor(anchor, state);
         }
 
-        ComponentParts { model, widgets }
+        AsyncComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+    async fn update(
+        &mut self,
+        msg: Self::Input,
+        sender: AsyncComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
         self.reset();
 
         match msg {
@@ -160,7 +167,54 @@ impl SimpleComponent for ControlPanelModel {
             }
             Input::ToggleTiling => {
                 self.set_tiling(!self.tiling);
-                sender.output(Output::ToggleTiling(self.tiling)).unwrap();
+
+                let mut socket = match WayfireSocket::connect().await {
+                    Ok(sock) => sock,
+                    Err(e) => {
+                        log::error!("Failed to connect to Wayfire IPC socket: {}", e);
+                        return;
+                    }
+                };
+
+                let plugins = match socket
+                    .send_json(&wayfire_rs::models::MsgTemplate {
+                        method: String::from("wayfire/get-config-option"),
+                        data: Some(json!({ "option": "core/plugins" })),
+                    })
+                    .await
+                {
+                    Ok(x) => x,
+                    Err(e) => {
+                        log::error!("Failed to query Wayfire options: {e}");
+                        return;
+                    }
+                };
+                let plugins = plugins.get("value").unwrap().as_str().unwrap().to_owned();
+
+                self.set_tiling(!plugins.contains("simple-tile"));
+                if self.tiling {
+                    if let Err(e) = socket
+                        .send_json(&wayfire_rs::models::MsgTemplate {
+                            method: String::from("wayfire/set-config-options"),
+                            data: Some(json!({ "core/plugins": plugins + " simple-tile"})),
+                        })
+                        .await
+                    {
+                        log::error!("Failed to enable tiling: {e}");
+                    }
+                } else {
+                    if let Err(e) = socket
+                        .send_json(&wayfire_rs::models::MsgTemplate {
+                            method: String::from("wayfire/set-config-options"),
+                            data: Some(
+                                json!({ "core/plugins": plugins.replace("simple-tile", "")}),
+                            ),
+                        })
+                        .await
+                    {
+                        log::error!("Failed to disable tiling: {e}");
+                    }
+                }
             }
             Input::UpdateVolume(x) => {
                 self.volume.emit(volume::Input::Update(x));

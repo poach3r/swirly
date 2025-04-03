@@ -15,7 +15,7 @@ use relm4::{prelude::*, set_global_css, WorkerController};
 struct AppModel {
     brightness_mode: BrightnessMode,
     bar: Controller<bar::BarModel>,
-    control_panel: Controller<control_panel::ControlPanelModel>,
+    control_panel: AsyncController<control_panel::ControlPanelModel>,
     dock: AsyncController<dock::DockModel>,
     wayfire_worker: WorkerController<workers::wayfire_worker::AsyncHandler>,
     battery_worker: WorkerController<workers::battery_worker::AsyncHandler>,
@@ -39,7 +39,6 @@ pub enum Input {
     UpdateTime(DateTime),
     ToggleControlPanel,
     ToggleDock,
-    ToggleTiling(bool),
     UpdateVolume(f64),
     SetVolume(f64),
 }
@@ -113,7 +112,6 @@ impl SimpleComponent for AppModel {
             control_panel_builder
                 .launch(())
                 .forward(sender.input_sender(), |msg| match msg {
-                    control_panel::Output::ToggleTiling(x) => Input::ToggleTiling(x),
                     control_panel::Output::SetBrightness(x) => Input::SetBrightness(x),
                     control_panel::Output::ToggleDock => Input::ToggleDock,
                     control_panel::Output::SetVolume(x) => Input::SetVolume(x),
@@ -138,7 +136,6 @@ impl SimpleComponent for AppModel {
 
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
-            Input::ToggleTiling(x) => {}
             Input::SetBrightness(x) => match self.brightness_mode {
                 BrightnessMode::BacklightControl => {
                     match backlight_control_rs::adjust_brightness_absolute(x, true) {
