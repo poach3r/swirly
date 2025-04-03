@@ -28,7 +28,7 @@ window {
 
 .dock,
 .control_panel {
-    border: 3px solid var(--bg2);
+    border: 4px solid var(--bg2);
     padding: 8px;
     border-radius: 18px;
 }
