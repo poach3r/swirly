@@ -33,7 +33,7 @@ impl AsyncComponent for WorkspaceModel {
         _root: Self::Root,
         _sender: AsyncComponentSender<Self>,
     ) -> AsyncComponentParts<Self> {
-        let model = Self { index: 0 };
+        let model = Self { index: 1 };
         let widgets = view_output!();
         AsyncComponentParts { model, widgets }
     }
