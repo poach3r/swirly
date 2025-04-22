@@ -232,7 +232,13 @@ impl AsyncComponent for DockModel {
             Input::Init => {
                 self.apps.guard().clear();
 
-                for view in self.socket.list_views().await.unwrap() {
+                for view in match self.socket.list_views().await {
+                    Ok(x) => x,
+                    Err(e) => {
+                        log::error!("Failed to get views: ${e}");
+                        return;
+                    }
+                } {
                     if &view.layer != "workspace" {
                         continue;
                     }
