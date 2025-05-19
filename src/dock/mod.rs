@@ -179,7 +179,7 @@ impl AsyncComponent for DockModel {
                 self.indicator.emit(indicator::Input::Toggle);
             }
             Input::Update(event) => {
-                if &event.name == "gtk4-layer-shell" {
+                if &event.name == "gtk4-layer-shell" || &event.name == "gtk-layer-shell" {
                     return;
                 }
 
@@ -232,18 +232,18 @@ impl AsyncComponent for DockModel {
             Input::Init => {
                 self.apps.guard().clear();
 
-                for view in match self.socket.list_views().await {
-                    Ok(x) => x,
-                    Err(e) => {
-                        log::error!("Failed to get views: ${e}");
-                        return;
-                    }
-                } {
-                    if &view.layer != "workspace" {
-                        continue;
-                    }
-                    self.apps.guard().push_back((view.id, view.app_id, false));
-                }
+                //for view in match self.socket.list_views().await {
+                //    Ok(x) => x,
+                //    Err(e) => {
+                //        log::error!("Failed to get views: ${e}");
+                //        return;
+                //    }
+                //} {
+                //    if &view.layer != "workspace" {
+                //        continue;
+                //    }
+                //    self.apps.guard().push_back((view.id, view.app_id, false));
+                //}
 
                 self.set_apps_count(self.apps.len());
             }
